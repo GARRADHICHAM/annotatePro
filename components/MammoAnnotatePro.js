@@ -42,7 +42,7 @@ const MammoAnnotatePro = () => {
     const [activeToolType, setActiveToolType] = useState('brush'); // 'brush' or 'eraser'
     const [brushConfig, setBrushConfig] = useState({
         size: 10,
-        color: '#ff0000', // Red for brush
+        color: '#FFFFFF', // Red for brush
     });
     const [isDrawing, setIsDrawing] = useState(false);
     const [annotationHistory, setAnnotationHistory] = useState([]);
@@ -265,16 +265,31 @@ const MammoAnnotatePro = () => {
         }));
     }, []);
     const [showStats, setShowStats] = useState(false); // Toggle for showing/hiding stats
+    // Add these new states at the beginning of your component
+    const [completed, setCompleted] = useState(false);
+    const [remainingImages, setRemainingImages] = useState(0);
+
     // Fetch image data
+    // Replace the existing fetchImageData function with this updated version
     const fetchImageData = async (index = 0, caseId = null) => {
         try {
             setLoading(true);
-            const response = await axios.get('http://127.0.0.1:8000/api/mammogram/predict_next', {
+            const userDataString = localStorage.getItem("userData");
+            console.log("userdataaaa :", userDataString)
+            const userData = JSON.parse(userDataString)
+            const response = await axios.get('http://127.0.0.1:8000/api/api/mammogram/next-unannotated', {
                 params: {
                     current_index: index,
+                    user_id: userData?._id, // Add user_id parameter
                     case_id: caseId
                 }
             });
+
+            // Check if all images are annotated
+            if (response.data.completed) {
+                setCompleted(true);
+                return;
+            }
 
             // Reset zoom when new image loads
             setZoomConfig(prev => ({
@@ -286,8 +301,10 @@ const MammoAnnotatePro = () => {
             setAnnotationHistory([]);
 
             setImageData(response.data);
+            setRemainingImages(response.data.remainingImages);
             setError(null);
 
+            // Fetch image stats
             const fetchImageStats = async (imageId) => {
                 try {
                     setLoadingStats(true);
@@ -301,10 +318,11 @@ const MammoAnnotatePro = () => {
                     setLoadingStats(false);
                 }
             };
-            fetchImageStats()
+            fetchImageStats();
         } catch (err) {
             setError('Failed to fetch mammogram data');
             console.error(err);
+            console.log("userdata data:", currentUser?._id);
         } finally {
             setLoading(false);
         }
@@ -316,14 +334,63 @@ const MammoAnnotatePro = () => {
     }, []);
 
     // Handle next image
-    const handleNextImage = () => {
-        fetchImageData(imageData.currentIndex);
+    const handleNextImage = async () => {
+        // Clear current annotations before loading new image
+        setAnnotationHistory([]);
+        setCurrentAnnotation(null);
+
+        // Get next index
+        const nextIndex = imageData.currentIndex + 1;
+
+        try {
+            // Show loading state
+            setLoading(true);
+
+            // Fetch next unannotated image
+            await fetchImageData(nextIndex);
+
+            // Reset zoom level for new image
+            setZoomConfig(prev => ({
+                ...prev,
+                level: 100
+            }));
+
+        } catch (error) {
+            console.error('Error loading next image:', error);
+            setError('Failed to load next image');
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Handle previous image
-    const handlePreviousImage = () => {
-        // Subtract 2 to go back one image (since next API increments)
-        fetchImageData(Math.max(0, imageData.currentIndex - 2));
+    const handlePreviousImage = async () => {
+        // Clear current annotations before loading new image
+        setAnnotationHistory([]);
+        setCurrentAnnotation(null);
+
+        // Calculate previous index, ensuring we don't go below 0
+        const prevIndex = Math.max(0, imageData.currentIndex - 1);
+
+        try {
+            // Show loading state
+            setLoading(true);
+
+            // Fetch previous unannotated image
+            await fetchImageData(prevIndex);
+
+            // Reset zoom level for new image
+            setZoomConfig(prev => ({
+                ...prev,
+                level: 100
+            }));
+
+        } catch (error) {
+            console.error('Error loading previous image:', error);
+            setError('Failed to load previous image');
+        } finally {
+            setLoading(false);
+        }
     };
 
     //saving annotation ------------------------------------------------------------------------------------------
@@ -471,9 +538,29 @@ const MammoAnnotatePro = () => {
         return colors[category] || '#6B7280'; // Default to gray
     };
 
-
-
+    // Add this completion message component
+    const CompletionMessage = () => (
+        <div className="flex flex-col items-center justify-center h-screen bg-white p-8 rounded-lg shadow-lg">
+            <div className="text-green-500 mb-4">
+                <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h2 className="text-2xl font-bold mb-4">All Images Annotated!</h2>
+            <p className="text-gray-600 mb-4">You have completed all available images for annotation.</p>
+            <button
+                onClick={() => window.location.reload()}
+                className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
+            >
+                Start Over
+            </button>
+        </div>
+    );
+    if (completed) {
+        return <CompletionMessage />;
+    }
     return (
+
         <div className='flex space-x-4 space-y-2'>
             <div className="w-72 sapace-y-2 flex-col  rounded-lg ">
                 <div className='bg-white rounded-lg space-y-4 border-gray-300 border mb-2  p-4'>
@@ -642,16 +729,21 @@ const MammoAnnotatePro = () => {
                             <h1 className="text-2xl font-bold text-gray-800">
                                 MammoAnnotate Pro
                             </h1>
-                            <div className="text-gray-600 flex flex-col items-end">
-                                <div className="mb-1">Image {imageData.currentIndex + 1} of {imageData.totalImages}</div>
-                                {/* Progress Bar */}
+
+                            {/* <div className="text-gray-600 flex flex-col items-end">
+                                <div className="mb-1">
+                                    Image {imageData.currentIndex + 1} of {imageData.totalImages}
+                                    ({remainingImages} remaining)
+                                </div>
                                 <div className="w-40 bg-gray-200 rounded-full h-2.5">
                                     <div
                                         className="bg-blue-500 h-2.5 rounded-full"
-                                        style={{ width: `${((imageData.currentIndex + 1) / imageData.totalImages) * 100}%` }}
+                                        style={{
+                                            width: `${((imageData.totalImages - remainingImages) / imageData.totalImages) * 100}%`
+                                        }}
                                     ></div>
                                 </div>
-                            </div>
+                            </div> */}
                         </div>
 
                         {/* Image Metadata */}
@@ -837,9 +929,7 @@ const MammoAnnotatePro = () => {
                                 Next Image
                             </button>
 
-                            <button className="px-6 py-2 bg-green-500 text-white rounded-md hover:bg-green-600">
-                                Complete
-                            </button>
+
                         </div>
                     </div>
                 </div>

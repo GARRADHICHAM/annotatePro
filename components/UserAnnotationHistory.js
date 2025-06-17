@@ -43,7 +43,7 @@ const UserAnnotationHistory = () => {
     const [filters, setFilters] = useState({
         birads_category: '',
         lesion_type: '',
-        date_range: '7' // last 7 days by default
+        date_range: '' // last 7 days by default
     });
 
     // For pagination
@@ -377,7 +377,7 @@ const UserAnnotationHistory = () => {
                                         query: { id: annotation._id }
                                     }}
                                 >
-                                    <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                    <button className="text-blue-600 hover:cursor-pointer hover:text-blue-800 text-sm font-medium">
                                         View Details
                                     </button>
                                 </Link>
